@@ -39,28 +39,37 @@ module.exports = function(RED) {
           });
 
         imap.once('ready', function() {
-          this.status({fill:"green",shape:"dot",text:"connected"});
+          node.status({fill:"green",shape:"dot",text:"connected"});
         });
           
           imap.once('error', function(err) {
             console.log(err);
-            this.status({fill:"green",shape:"dot",text:"error"});
+            node.status({fill:"green",shape:"dot",text:"error"});
           });
           
           imap.once('end', function() {
             console.log('Connection ended');
-            this.status({fill:"red",shape:"dot",text:"not connected"});
+            node.status({fill:"red",shape:"dot",text:"not connected"});
           });
 
         function openInbox(cb) {
-            imap.openBox('INBOX', node.options.openReadOnly, cb);
+            imap.openBox(node.options.box, node.options.openReadOnly, cb);
         }
 
         function readFromImap(){
+          node.status({fill:"green",shape:"dot",text:"reading..."});
           openInbox(function(err, box) {
             if (err) throw err;
 
-            imap.search([ 'UNSEEN' ], function(err, results) {
+            var criteria = [ node.options.criteria ];
+            if(criteria == '_msg_'){
+              var criteria = node.savedMsg.criteria || [];
+            }
+
+            imap.search(criteria, function(err, results) {
+
+              var count = results? results.length : 0;
+              node.status({fill:"green",shape:"dot",text:"email found: " + count});
 
               if(results == null || results.length == 0) {
                 return;
@@ -101,7 +110,6 @@ module.exports = function(RED) {
                 });
                 f.once('end', function() {
                   console.log('Done fetching all messages!');
-                  // imap.end();
                 });
             });
             
