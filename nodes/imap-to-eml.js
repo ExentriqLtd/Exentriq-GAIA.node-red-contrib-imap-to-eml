@@ -15,8 +15,6 @@ module.exports = function(RED) {
             useTLS: n.useTLS || true,
             server: n.server,
             port: n.port,
-            // userid: n.userid,
-            // password: n.password,
             box: n.box,
             disposition: n.disposition,
             criteria: n.criteria,
@@ -24,39 +22,60 @@ module.exports = function(RED) {
         };
 
         console.log(this.options);
-        console.log(this.credentials);
 
         // copy "this" object
         var node = this;
+        var busy = false;
 
-        var imap = new Imap({
-          user: this.credentials.userid,
-          password: this.credentials.password,
-          host: node.options.server,
-          tlsOptions: {'servername': node.options.server},
-          port: node.options.port,
-          tls: node.options.useTLS
+        var imap;
+
+        function connect(){
+          if(busy){
+            node.status({fill:"yellow",shape:"dot",text:"busy"});
+            return;
+          }
+          node.status({fill:"yellow",shape:"dot",text:"connecting..."});
+          busy = true;
+          imap = new Imap({
+            user: node.credentials.userid,
+            password: node.credentials.password,
+            host: node.options.server,
+            tlsOptions: {'servername': node.options.server},
+            port: node.options.port,
+            tls: node.options.useTLS
+            });
+  
+          imap.once('ready', function() {
+            console.log('Connection ready');
+            readFromImap();
+            node.status({fill:"green",shape:"dot",text:"connected"});
           });
-
-        imap.once('ready', function() {
-          node.status({fill:"green",shape:"dot",text:"connected"});
-        });
-          
+            
           imap.once('error', function(err) {
+            console.log('Connection error');
             console.log(err);
             node.status({fill:"green",shape:"dot",text:"error"});
           });
-          
+            
           imap.once('end', function() {
             console.log('Connection ended');
-            node.status({fill:"red",shape:"dot",text:"not connected"});
+            node.status({});
           });
+
+          imap.connect();
+        }
 
         function openInbox(cb) {
             imap.openBox(node.options.box, node.options.openReadOnly, cb);
         }
 
         function readFromImap(){
+          
+          if(imap.state != 'authenticated'){
+            node.status({fill:"red",shape:"dot",text:"not authenticated: " + imap.state});
+            return;
+          }
+          
           node.status({fill:"green",shape:"dot",text:"reading..."});
           openInbox(function(err, box) {
             if (err) throw err;
@@ -72,6 +91,8 @@ module.exports = function(RED) {
               node.status({fill:"green",shape:"dot",text:"email found: " + count});
 
               if(results == null || results.length == 0) {
+                console.log('imap.end()');
+                imap.end();
                 return;
               }
 
@@ -110,20 +131,20 @@ module.exports = function(RED) {
                 });
                 f.once('end', function() {
                   console.log('Done fetching all messages!');
+                  console.log('imap.end()');
+                  imap.end();
+                  busy = false;
                 });
             });
             
             
           });
         }
-
-        imap.connect();
-        
         
         // Respond to inputs...
         this.on('input', function (msg) {
             node.savedMsg = msg;
-            readFromImap();
+            connect()
         });
 
         // Called when the node is shutdown - eg on redeploy.
