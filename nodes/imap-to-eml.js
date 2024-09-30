@@ -65,6 +65,11 @@ module.exports = function(RED) {
           imap.connect();
         }
 
+        function endConnection(){
+          imap.end();
+          busy = false;
+        }
+
         function openInbox(cb) {
             imap.openBox(node.options.box, node.options.openReadOnly, cb);
         }
@@ -91,8 +96,7 @@ module.exports = function(RED) {
               node.status({fill:"green",shape:"dot",text:"email found: " + count});
 
               if(results == null || results.length == 0) {
-                console.log('imap.end()');
-                imap.end();
+                endConnection();
                 return;
               }
 
@@ -131,9 +135,7 @@ module.exports = function(RED) {
                 });
                 f.once('end', function() {
                   console.log('Done fetching all messages!');
-                  console.log('imap.end()');
-                  imap.end();
-                  busy = false;
+                  endConnection();
                 });
             });
             
