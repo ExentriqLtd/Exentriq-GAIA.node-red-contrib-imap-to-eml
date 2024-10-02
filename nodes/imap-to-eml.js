@@ -26,16 +26,17 @@ module.exports = function(RED) {
         // copy "this" object
         var node = this;
         var busy = false;
+        var startTime;
 
         var imap;
 
         function connect(){
-          if(busy){
+          if(checkBusy()){
             node.status({fill:"yellow",shape:"dot",text:"busy"});
             return;
           }
           node.status({fill:"yellow",shape:"dot",text:"connecting..."});
-          busy = true;
+          setBusy();
           imap = new Imap({
             user: node.credentials.userid,
             password: node.credentials.password,
@@ -54,6 +55,7 @@ module.exports = function(RED) {
           imap.once('error', function(err) {
             console.log('Connection error');
             console.log(err);
+            endConnection();
             node.status({fill:"green",shape:"dot",text:"error"});
           });
             
@@ -65,9 +67,22 @@ module.exports = function(RED) {
           imap.connect();
         }
 
+        function setBusy(){
+          busy = true;
+          startTime = Date.now();
+        }
+
+        function checkBusy(){
+          var checkTime = Date.now();
+          if((checkTime - startTime) > (1000 * 60 * 5)){
+            busy = false;
+          }
+          return busy;
+        }
+
         function endConnection(){
-          imap.end();
           busy = false;
+          imap.end();
         }
 
         function openInbox(cb) {
@@ -83,7 +98,10 @@ module.exports = function(RED) {
           
           node.status({fill:"green",shape:"dot",text:"reading..."});
           openInbox(function(err, box) {
-            if (err) throw err;
+            if (err) {
+              endConnection();
+              throw err;
+            }
 
             var criteria = [ node.options.criteria ];
             if(criteria == '_msg_'){
@@ -131,6 +149,7 @@ module.exports = function(RED) {
                   });
                 });
                 f.once('error', function(err) {
+                  endConnection();
                   console.log('Fetch error: ' + err);
                 });
                 f.once('end', function() {
@@ -153,7 +172,7 @@ module.exports = function(RED) {
         // Allows ports to be closed, connections dropped etc.
         this.on("close", function() {
             node.status({});
-            imap.end();
+            endConnection();
         });
     }
 
